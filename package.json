@@ -1,27 +1,45 @@
 {
-  "name": "figma-claude-architecture",
+  "name": "figma-portfolio-generator",
   "version": "1.0.0",
-  "description": "Node.js project integrating Claude API with Figma API for architecture portfolio creation",
-  "main": "src/index.js",
+  "description": "AI-powered Figma portfolio generator using MCP architecture",
+  "main": "src/main.js",
   "scripts": {
-    "start": "node src/index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node src/main.js",
+    "serve": "node src/main.js serve",
+    "dev": "nodemon src/main.js serve",
+    "templates": "node src/main.js templates",
+    "create": "node src/main.js create",
+    "build-plugin": "webpack --config webpack.config.js --mode=production",
+    "test": "jest"
   },
   "keywords": [
     "figma",
-    "claude",
-    "architecture",
     "portfolio",
-    "ai"
+    "generator",
+    "ai",
+    "mcp"
   ],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@anthropic/sdk": "^0.9.0",
-    "axios": "^1.6.0",
+    "@anthropic-ai/sdk": "^0.9.0",
+    "axios": "^1.6.2",
+    "chalk": "^4.1.2",
+    "commander": "^11.1.0",
     "dotenv": "^16.3.1",
+    "express": "^4.18.2",
     "figma-api": "^1.11.0",
-    "commander": "^11.0.0",
-    "chalk": "^4.1.2"
+    "inquirer": "^8.2.5",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.76.0",
+    "nodemon": "^3.0.1",
+    "ts-loader": "^9.5.0",
+    "typescript": "^5.2.2",
+    "webpack": "^5.89.0",
+    "webpack-cli": "^5.1.4"
   }
 }

@@ -1,0 +1,30 @@
+{
+  "name": "Portfolio Generator",
+  "id": "portfolio-generator-mcp",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "networkAccess": {
+    "allowedDomains": ["*"],
+    "reasoning": "Communicate with local MCP server and AI services"
+  },
+  "permissions": ["currentuser"],
+  "menu": [
+    {
+      "name": "Generate Portfolio",
+      "command": "generate-portfolio"
+    },
+    {
+      "name": "Connect to MCP Server",
+      "command": "connect-mcp"
+    },
+    {
+      "separator": true
+    },
+    {
+      "name": "Settings",
+      "command": "show-settings"
+    }
+  ]
+}

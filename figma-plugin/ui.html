@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>포트폴리오 생성기</title>
+    <style>
+      body {
+        font-family: "Inter", sans-serif;
+        margin: 0;
+        padding: 20px;
+        color: #333;
+        font-size: 14px;
+        background-color: #f9f9f9;
+      }
+
+      h1,
+      h2,
+      h3 {
+        margin-top: 0;
+      }
+
+      .app {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      .section {
+        background: white;
+        border-radius: 8px;
+        padding: 16px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      }
+
+      button {
+        background-color: #18a0fb;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        padding: 8px 16px;
+        cursor: pointer;
+        font-weight: 500;
+        transition: background-color 0.2s;
+      }
+
+      button:hover {
+        background-color: #0d8cdd;
+      }
+
+      button.secondary {
+        background-color: #e5e5e5;
+        color: #333;
+      }
+
+      button.secondary:hover {
+        background-color: #d0d0d0;
+      }
+
+      .button-row {
+        display: flex;
+        gap: 8px;
+        margin-top: 16px;
+      }
+
+      input,
+      select,
+      textarea {
+        display: block;
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #e5e5e5;
+        border-radius: 4px;
+        margin-bottom: 12px;
+        box-sizing: border-box;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 4px;
+        font-weight: 500;
+      }
+
+      .connection-status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+
+      .status-indicator {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background-color: #ccc;
+      }
+
+      .status-indicator.connected {
+        background-color: #4caf50;
+      }
+
+      .status-indicator.disconnected {
+        background-color: #f44336;
+      }
+
+      .status-text {
+        font-size: 12px;
+      }
+
+      .view {
+        display: none;
+      }
+
+      .view.active {
+        display: block;
+      }
+
+      .template-card {
+        border: 1px solid #e5e5e5;
+        border-radius: 6px;
+        padding: 12px;
+        margin-bottom: 12px;
+        cursor: pointer;
+        transition: border-color 0.2s, background-color 0.2s;
+      }
+
+      .template-card:hover {
+        border-color: #18a0fb;
+        background-color: #f5f9ff;
+      }
+
+      .template-card.selected {
+        border-color: #18a0fb;
+        background-color: #f0f7ff;
+      }
+
+      .template-card h3 {
+        margin-top: 0;
+        margin-bottom: 8px;
+      }
+
+      .template-card p {
+        margin: 0;
+        font-size: 12px;
+        color: #666;
+      }
+
+      .error-message {
+        color: #f44336;
+        margin-top: 8px;
+        font-size: 12px;
+      }
+
+      .success-message {
+        color: #4caf50;
+        margin-top: 8px;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <!-- 메인 뷰 -->
+      <div id="main-view" class="view active">
+        <h2>포트폴리오 생성기</h2>
+        <p>MCP 아키텍처를 사용한 Figma 포트폴리오 생성기입니다.</p>
+
+        <div class="button-row">
+          <button id="create-portfolio-btn">포트폴리오 생성</button>
+          <button id="connect-btn" class="secondary">MCP 서버 연결</button>
+          <button id="settings-btn" class="secondary">설정</button>
+        </div>
+
+        <div class="connection-status">
+          <div
+            id="status-indicator"
+            class="status-indicator disconnected"
+          ></div>
+          <div id="status-text" class="status-text">연결 끊김</div>
+        </div>
+      </div>
+
+      <!-- 포트폴리오 생성 뷰 -->
+      <div id="generator-view" class="view">
+        <h2>포트폴리오 생성</h2>
+
+        <div class="section">
+          <label for="portfolio-name">포트폴리오 이름</label>
+          <input
+            type="text"
+            id="portfolio-name"
+            placeholder="포트폴리오 이름 입력"
+          />
+
+          <label for="designer-name">디자이너 이름</label>
+          <input
+            type="text"
+            id="designer-name"
+            placeholder="디자이너 이름 입력"
+          />
+
+          <label>템플릿 선택</label>
+          <div id="template-container">
+            <div class="template-card" data-template="minimalist">
+              <h3>미니멀리스트 디자이너</h3>
+              <p>깔끔하고 심플한 디자인의 포트폴리오 템플릿입니다.</p>
+            </div>
+
+            <div class="template-card" data-template="project-showcase">
+              <h3>프로젝트 쇼케이스</h3>
+              <p>작업물과 프로젝트를 강조하는 포트폴리오 템플릿입니다.</p>
+            </div>
+
+            <div class="template-card" data-template="creative-professional">
+              <h3>크리에이티브 프로페셔널</h3>
+              <p>독창적이고 예술적인 감각의 포트폴리오 템플릿입니다.</p>
+            </div>
+          </div>
+
+          <div class="button-row">
+            <button id="generate-btn">포트폴리오 생성</button>
+            <button id="generator-back-btn" class="secondary">뒤로</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MCP 연결 뷰 -->
+      <div id="connect-view" class="view">
+        <h2>MCP 서버 연결</h2>
+
+        <div class="section">
+          <label for="server-url">서버 URL</label>
+          <input
+            type="text"
+            id="server-url"
+            placeholder="ws://localhost:9000"
+            value="ws://localhost:9000"
+          />
+
+          <div
+            id="connection-error"
+            class="error-message"
+            style="display: none"
+          ></div>
+          <div
+            id="connection-success"
+            class="success-message"
+            style="display: none"
+          ></div>
+
+          <div class="button-row">
+            <button id="connect-server-btn">연결</button>
+            <button id="disconnect-server-btn">연결 해제</button>
+            <button id="connect-back-btn" class="secondary">뒤로</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 설정 뷰 -->
+      <div id="settings-view" class="view">
+        <h2>설정</h2>
+
+        <div class="section">
+          <label for="ai-model">AI 모델</label>
+          <select id="ai-model">
+            <option value="claude-3-opus">Claude 3 Opus</option>
+            <option value="claude-3-sonnet" selected>Claude 3 Sonnet</option>
+            <option value="claude-3-haiku">Claude 3 Haiku</option>
+          </select>
+
+          <label for="design-style">디자인 스타일</label>
+          <select id="design-style">
+            <option value="modern" selected>모던</option>
+            <option value="minimal">미니멀</option>
+            <option value="bold">볼드</option>
+            <option value="playful">플레이풀</option>
+            <option value="elegant">엘레건트</option>
+          </select>
+
+          <div class="button-row">
+            <button id="save-settings-btn">저장</button>
+            <button id="settings-back-btn" class="secondary">뒤로</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // 뷰 관리
+      const views = {
+        main: document.getElementById("main-view"),
+        generator: document.getElementById("generator-view"),
+        connect: document.getElementById("connect-view"),
+        settings: document.getElementById("settings-view"),
+      };
+
+      let activeView = "main";
+      let selectedTemplate = null;
+      let connectionStatus = false;
+
+      // 뷰 전환 함수
+      function showView(viewName) {
+        Object.values(views).forEach((view) => view.classList.remove("active"));
+        views[viewName].classList.add("active");
+        activeView = viewName;
+      }
+
+      // 메인 뷰 버튼
+      document.getElementById("create-portfolio-btn").onclick = () =>
+        showView("generator");
+      document.getElementById("connect-btn").onclick = () =>
+        showView("connect");
+      document.getElementById("settings-btn").onclick = () =>
+        showView("settings");
+
+      // 템플릿 선택
+      const templateCards = document.querySelectorAll(".template-card");
+      templateCards.forEach((card) => {
+        card.addEventListener("click", () => {
+          templateCards.forEach((c) => c.classList.remove("selected"));
+          card.classList.add("selected");
+          selectedTemplate = card.dataset.template;
+        });
+      });
+
+      // 연결 상태 표시 업데이트
+      function updateConnectionStatus(connected) {
+        const indicator = document.getElementById("status-indicator");
+        const statusText = document.getElementById("status-text");
+
+        connectionStatus = connected;
+
+        if (connected) {
+          indicator.classList.remove("disconnected");
+          indicator.classList.add("connected");
+          statusText.textContent = "연결됨";
+        } else {
+          indicator.classList.remove("connected");
+          indicator.classList.add("disconnected");
+          statusText.textContent = "연결 끊김";
+        }
+      }
+
+      // 포트폴리오 생성 버튼
+      document.getElementById("generate-btn").onclick = () => {
+        if (!selectedTemplate) {
+          alert("템플릿을 선택해주세요.");
+          return;
+        }
+
+        const portfolioName =
+          document.getElementById("portfolio-name").value || "포트폴리오";
+        const designerName =
+          document.getElementById("designer-name").value || "디자이너";
+
+        parent.postMessage(
+          {
+            pluginMessage: {
+              type: "generate-portfolio",
+              template: selectedTemplate,
+              data: {
+                name: portfolioName,
+                designer: designerName,
+              },
+            },
+          },
+          "*"
+        );
+
+        showView("main");
+      };
+
+      // MCP 서버 연결 버튼
+      document.getElementById("connect-server-btn").onclick = () => {
+        const serverUrl = document.getElementById("server-url").value;
+
+        document.getElementById("connection-error").style.display = "none";
+        document.getElementById("connection-success").style.display = "none";
+
+        parent.postMessage(
+          {
+            pluginMessage: {
+              type: "connect",
+              serverUrl,
+            },
+          },
+          "*"
+        );
+      };
+
+      // MCP 서버 연결 해제 버튼
+      document.getElementById("disconnect-server-btn").onclick = () => {
+        parent.postMessage(
+          {
+            pluginMessage: {
+              type: "disconnect",
+            },
+          },
+          "*"
+        );
+      };
+
+      // 설정 저장 버튼
+      document.getElementById("save-settings-btn").onclick = () => {
+        const model = document.getElementById("ai-model").value;
+        const style = document.getElementById("design-style").value;
+
+        // 설정 저장 로직
+        localStorage.setItem("aiModel", model);
+        localStorage.setItem("designStyle", style);
+
+        parent.postMessage(
+          {
+            pluginMessage: {
+              type: "notify",
+              message: "설정이 저장되었습니다.",
+            },
+          },
+          "*"
+        );
+
+        showView("main");
+      };
+
+      // 뒤로 가기 버튼
+      document.getElementById("generator-back-btn").onclick = () =>
+        showView("main");
+      document.getElementById("connect-back-btn").onclick = () =>
+        showView("main");
+      document.getElementById("settings-back-btn").onclick = () =>
+        showView("main");
+
+      // 플러그인으로부터 메시지 수신
+      window.onmessage = (event) => {
+        const message = event.data.pluginMessage;
+
+        if (!message) return;
+
+        switch (message.type) {
+          case "connected":
+            updateConnectionStatus(true);
+            document.getElementById("connection-success").textContent =
+              "MCP 서버에 연결되었습니다.";
+            document.getElementById("connection-success").style.display =
+              "block";
+            break;
+
+          case "disconnected":
+            updateConnectionStatus(false);
+            break;
+
+          case "error":
+            document.getElementById("connection-error").textContent =
+              message.message || "오류가 발생했습니다.";
+            document.getElementById("connection-error").style.display = "block";
+            break;
+
+          case "show-generator":
+            showView("generator");
+            break;
+
+          case "show-settings":
+            showView("settings");
+            break;
+        }
+      };
+
+      // 설정 로드
+      window.onload = () => {
+        const model = localStorage.getItem("aiModel") || "claude-3-sonnet";
+        const style = localStorage.getItem("designStyle") || "modern";
+
+        document.getElementById("ai-model").value = model;
+        document.getElementById("design-style").value = style;
+      };
+    </script>
+  </body>
+</html>
