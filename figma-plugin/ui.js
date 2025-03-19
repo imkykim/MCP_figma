@@ -16,6 +16,9 @@ document.addEventListener("DOMContentLoaded", () => {
   // 연결 상태
   let isConnected = false;
   let templates = []; // 템플릿 목록 저장
+  
+  // WebSocket 연결 관리
+  let ws = null;
 
   // 초기 상태 설정
   showView(mainView);
@@ -128,37 +131,133 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("generate-btn").textContent = "생성 중...";
   });
 
+  // Connect to WebSocket server
+  function connectWebSocket(url) {
+    try {
+      // Close existing connection if any
+      if (ws) {
+        ws.close();
+      }
+      
+      // Create new WebSocket connection
+      ws = new WebSocket(url);
+      
+      // Set up event handlers
+      ws.onopen = () => {
+        // Notify plugin that connection is established
+        parent.postMessage({
+          pluginMessage: {
+            type: "ws-connected"
+          }
+        }, '*');
+        
+        isConnected = true;
+        updateConnectionStatus();
+        document.getElementById("connect-status").textContent = "연결 성공!";
+        document.getElementById("connect-status").className = "status-success";
+        setTimeout(() => showView(mainView), 1500);
+      };
+      
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          // Forward message to plugin
+          parent.postMessage({
+            pluginMessage: {
+              type: "ws-message",
+              data: data
+            }
+          }, '*');
+        } catch (error) {
+          console.error("WebSocket message parsing error:", error);
+        }
+      };
+      
+      ws.onerror = (error) => {
+        // Forward error to plugin
+        parent.postMessage({
+          pluginMessage: {
+            type: "ws-error",
+            error: "WebSocket connection error"
+          }
+        }, '*');
+        
+        isConnected = false;
+        updateConnectionStatus();
+        document.getElementById("connect-status").textContent = "연결 실패";
+        document.getElementById("connect-status").className = "status-error";
+      };
+      
+      ws.onclose = () => {
+        // Notify plugin that connection is closed
+        parent.postMessage({
+          pluginMessage: {
+            type: "ws-closed"
+          }
+        }, '*');
+        
+        isConnected = false;
+        updateConnectionStatus();
+        document.getElementById("connect-status").textContent = "연결 해제됨";
+        document.getElementById("connect-status").className = "status-normal";
+      };
+    } catch (error) {
+      console.error("WebSocket connection error:", error);
+      parent.postMessage({
+        pluginMessage: {
+          type: "ws-error",
+          error: error.message
+        }
+      }, '*');
+      
+      isConnected = false;
+      updateConnectionStatus();
+      document.getElementById("connect-status").textContent = `연결 실패: ${error.message}`;
+      document.getElementById("connect-status").className = "status-error";
+    }
+  }
+  
+  // Disconnect WebSocket
+  function disconnectWebSocket() {
+    if (ws) {
+      ws.close();
+      ws = null;
+    }
+  }
+  
+  // Send message via WebSocket
+  function sendWebSocketMessage(message) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(message));
+    } else {
+      console.error("Cannot send message: WebSocket is not connected");
+      parent.postMessage({
+        pluginMessage: {
+          type: "notify",
+          message: "WebSocket is not connected"
+        }
+      }, '*');
+    }
+  }
+
   // Figma 코드로부터 메시지 리스닝
   window.onmessage = (event) => {
     const message = event.data.pluginMessage;
     if (!message) return;
 
     switch (message.type) {
-      case "connectionSuccess":
-        isConnected = true;
-        updateConnectionStatus();
-        document.getElementById("connect-status").textContent = "연결 성공!";
-        document.getElementById("connect-status").className = "status-success";
-        setTimeout(() => showView(mainView), 1500);
+      case "establish-connection":
+        connectWebSocket(message.serverUrl);
         break;
-
-      case "connectionFailed":
-        isConnected = false;
-        updateConnectionStatus();
-        document.getElementById(
-          "connect-status"
-        ).textContent = `연결 실패: ${message.error}`;
-        document.getElementById("connect-status").className = "status-error";
+        
+      case "disconnect-connection":
+        disconnectWebSocket();
         break;
-
-      case "disconnected":
-        isConnected = false;
-        updateConnectionStatus();
-        document.getElementById("connect-status").textContent = "연결 해제됨";
-        document.getElementById("connect-status").className = "status-normal";
-        setTimeout(() => showView(mainView), 1500);
+        
+      case "ws-send":
+        sendWebSocketMessage(message.data);
         break;
-
+        
       case "templatesList":
         templates = message.templates;
         displayTemplates(templates);
@@ -182,115 +281,90 @@ document.addEventListener("DOMContentLoaded", () => {
         break;
     }
   };
-
-  // 기능 함수들
-
-  /**
-   * 특정 뷰 표시
-   * @param {HTMLElement} viewToShow - 표시할 뷰 요소
-   */
-  function showView(viewToShow) {
+  
+  // 뷰 전환 함수
+  function showView(viewElement) {
     // 모든 뷰 숨기기
-    [mainView, generatorView, connectView, settingsView].forEach((view) => {
-      if (view) view.style.display = "none";
+    document.querySelectorAll(".view").forEach((view) => {
+      view.classList.remove("active");
     });
-
+    
     // 지정된 뷰 표시
-    if (viewToShow) viewToShow.style.display = "block";
+    viewElement.classList.add("active");
   }
-
-  /**
-   * 연결 상태 업데이트
-   */
+  
+  // 연결 상태 업데이트 함수
   function updateConnectionStatus() {
     if (connectionStatus) {
-      connectionStatus.textContent = isConnected ? "연결됨" : "연결 안됨";
-      connectionStatus.className = isConnected
-        ? "status-connected"
-        : "status-disconnected";
+      const indicator = document.getElementById("status-indicator");
+      const statusText = document.getElementById("status-text");
+      
+      if (isConnected) {
+        indicator.classList.remove("disconnected");
+        indicator.classList.add("connected");
+        statusText.textContent = "연결됨";
+      } else {
+        indicator.classList.remove("connected");
+        indicator.classList.add("disconnected");
+        statusText.textContent = "연결 끊김";
+      }
     }
   }
-
-  /**
-   * 템플릿 목록 표시
-   * @param {Array} templatesList - 템플릿 목록
-   */
-  function displayTemplates(templatesList) {
-    if (!templateContainer) return;
-
-    templateContainer.innerHTML = "";
-
-    if (!templatesList || templatesList.length === 0) {
-      displayDefaultTemplates();
-      return;
-    }
-
-    templatesList.forEach((template) => {
-      const templateCard = document.createElement("div");
-      templateCard.className = "template-card";
-      templateCard.dataset.templateId = template.id;
-
-      templateCard.innerHTML = `
-        <h3>${template.name}</h3>
-        <p>${template.description}</p>
-      `;
-
-      // 클릭 이벤트
-      templateCard.addEventListener("click", () => {
-        // 모든 선택 초기화
-        document.querySelectorAll(".template-card").forEach((card) => {
-          card.classList.remove("selected");
-        });
-
-        // 현재 카드 선택
-        templateCard.classList.add("selected");
-      });
-
-      templateContainer.appendChild(templateCard);
-    });
-  }
-
-  /**
-   * 기본 템플릿 표시 (서버 연결 없는 경우)
-   */
-  function displayDefaultTemplates() {
-    const defaultTemplates = [
-      {
-        id: "minimalist",
-        name: "미니멀리스트",
-        description: "깔끔하고 간결한 디자인",
-      },
-      {
-        id: "project-showcase",
-        name: "프로젝트 쇼케이스",
-        description: "프로젝트 중심 레이아웃",
-      },
-      {
-        id: "creative",
-        name: "크리에이티브",
-        description: "창의적이고 예술적인 디자인",
-      },
-    ];
-
-    displayTemplates(defaultTemplates);
-  }
-
-  /**
-   * 알림 표시
-   * @param {string} message - 알림 메시지
-   * @param {string} level - 알림 레벨 (info, success, warning, error)
-   */
+  
+  // 알림 표시 함수
   function showNotification(message, level = "info") {
     const notification = document.getElementById("notification");
     if (!notification) return;
-
+    
     notification.textContent = message;
-    notification.className = `notification notification-${level}`;
+    notification.className = `notification ${level}`;
     notification.style.display = "block";
-
-    // 3초 후 자동 숨김
+    
     setTimeout(() => {
       notification.style.display = "none";
     }, 3000);
+  }
+  
+  // 기본 템플릿 표시 함수
+  function displayDefaultTemplates() {
+    const defaultTemplates = [
+      { id: "minimalist", name: "미니멀리스트 디자이너", description: "깔끔하고 심플한 디자인의 포트폴리오 템플릿입니다." },
+      { id: "project-showcase", name: "프로젝트 쇼케이스", description: "작업물과 프로젝트를 강조하는 포트폴리오 템플릿입니다." },
+      { id: "creative-professional", name: "크리에이티브 프로페셔널", description: "독창적이고 예술적인 감각의 포트폴리오 템플릿입니다." }
+    ];
+    
+    displayTemplates(defaultTemplates);
+  }
+  
+  // 템플릿 표시 함수
+  function displayTemplates(templateList) {
+    if (!templateContainer) return;
+    
+    templateContainer.innerHTML = "";
+    
+    templateList.forEach(template => {
+      const templateCard = document.createElement("div");
+      templateCard.className = "template-card";
+      templateCard.dataset.templateId = template.id;
+      
+      const templateTitle = document.createElement("h3");
+      templateTitle.textContent = template.name;
+      
+      const templateDesc = document.createElement("p");
+      templateDesc.textContent = template.description;
+      
+      templateCard.appendChild(templateTitle);
+      templateCard.appendChild(templateDesc);
+      
+      templateCard.addEventListener("click", () => {
+        // 선택된 템플릿 표시
+        document.querySelectorAll(".template-card").forEach(card => {
+          card.classList.remove("selected");
+        });
+        templateCard.classList.add("selected");
+      });
+      
+      templateContainer.appendChild(templateCard);
+    });
   }
 });

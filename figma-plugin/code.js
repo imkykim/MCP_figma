@@ -83,39 +83,17 @@ async function connectToMcpServer(url) {
     }
 
     serverUrl = url;
-    ws = new WebSocket(serverUrl);
-
-    // 연결 이벤트 리스너
-    ws.onopen = () => {
-      isConnected = true;
-      figma.notify("MCP 서버에 연결되었습니다.");
-      figma.ui.postMessage({ type: "connected" });
-    };
-
-    // 메시지 수신 이벤트 리스너
-    ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        handleIncomingMessage(message);
-      } catch (error) {
-        console.error("메시지 처리 중 오류:", error);
-      }
-    };
-
-    // 연결 종료 이벤트 리스너
-    ws.onclose = () => {
-      isConnected = false;
-      connectionId = null;
-      figma.notify("MCP 서버와의 연결이 종료되었습니다.");
-      figma.ui.postMessage({ type: "disconnected" });
-    };
-
-    // 에러 이벤트 리스너
-    ws.onerror = (error) => {
-      console.error("WebSocket 오류:", error);
-      figma.notify("MCP 서버 연결 중 오류가 발생했습니다.");
-      figma.ui.postMessage({ type: "error", message: "연결 오류" });
-    };
+    
+    // Use figma.ui.postMessage to communicate with the UI
+    // which can then use WebSockets
+    figma.ui.postMessage({ 
+      type: "establish-connection", 
+      serverUrl: serverUrl 
+    });
+    
+    // Set a flag to indicate connection is in progress
+    isConnected = true;
+    figma.notify("MCP 서버 연결 요청을 보냈습니다.");
   } catch (error) {
     console.error("MCP 서버 연결 중 오류:", error);
     figma.notify("MCP 서버 연결 중 오류가 발생했습니다.");
@@ -124,12 +102,17 @@ async function connectToMcpServer(url) {
 
 // MCP 서버와 연결 해제
 function disconnectFromMcpServer() {
-  if (ws) {
-    ws.close();
-    ws = null;
-    isConnected = false;
-    connectionId = null;
-  }
+  // Send disconnect message to UI
+  figma.ui.postMessage({
+    type: "disconnect-connection"
+  });
+  
+  // Reset connection state
+  ws = null;
+  isConnected = false;
+  connectionId = null;
+  
+  figma.notify("MCP 서버와의 연결이 종료되었습니다.");
 }
 
 // 수신된 메시지 처리
@@ -151,10 +134,61 @@ function handleIncomingMessage(message) {
   }
 }
 
+// Update figma.ui.onmessage to handle WebSocket messages from UI
+figma.ui.onmessage = async (msg) => {
+  switch (msg.type) {
+    case "connect":
+      await connectToMcpServer(msg.serverUrl || serverUrl);
+      break;
+
+    case "disconnect":
+      disconnectFromMcpServer();
+      break;
+
+    case "generate-portfolio":
+      await generatePortfolio(msg.template, msg.data);
+      break;
+
+    case "notify":
+      figma.notify(msg.message);
+      break;
+
+    case "close-plugin":
+      figma.closePlugin(msg.message);
+      break;
+      
+    // Add new message types for WebSocket communication
+    case "ws-connected":
+      connectionId = msg.connectionId;
+      figma.notify(`MCP 서버에 연결되었습니다. (ID: ${connectionId})`);
+      break;
+      
+    case "ws-message":
+      handleIncomingMessage(msg.data);
+      break;
+      
+    case "ws-error":
+      console.error("WebSocket 오류:", msg.error);
+      figma.notify("MCP 서버 연결 중 오류가 발생했습니다.");
+      isConnected = false;
+      break;
+      
+    case "ws-closed":
+      isConnected = false;
+      connectionId = null;
+      figma.notify("MCP 서버와의 연결이 종료되었습니다.");
+      break;
+  }
+};
+
 // MCP 서버에 메시지 전송
 function sendMessage(message) {
-  if (isConnected && ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(message));
+  if (isConnected) {
+    // Send via UI instead of direct WebSocket
+    figma.ui.postMessage({
+      type: "ws-send",
+      data: message
+    });
     return true;
   } else {
     figma.notify("MCP 서버에 연결되어 있지 않습니다.");
@@ -472,7 +506,7 @@ async function generatePortfolio(template, data) {
 
     // 새 페이지 생성
     const page = figma.createPage();
-    page.name = data?.name || "포트폴리오";
+    page.name = (data && data.name) || "포트폴리오";
     figma.currentPage = page;
 
     // 템플릿 적용
@@ -492,7 +526,7 @@ async function applyTemplate(params) {
 
   // 메인 프레임 생성
   const frame = await createFrame({
-    name: data?.name || "포트폴리오",
+    name: (data && data.name) || "포트폴리오",
     width: 1920,
     height: 1080,
     backgroundColor: styles.colors.background,
