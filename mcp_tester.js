@@ -186,6 +186,26 @@ function promptUser() {
       testConnection();
       return;
     }
+    
+    if (command === "exec" || command === "execute") {
+      executeCommand();
+      return;
+    }
+    
+    if (command === "templates") {
+      getTemplates();
+      return;
+    }
+    
+    if (command === "generate") {
+      generatePortfolio();
+      return;
+    }
+    
+    if (command === "ai" || command === "claude") {
+      generateWithAI();
+      return;
+    }
 
     if (command === "") {
       promptUser();
@@ -210,6 +230,10 @@ function showHelp() {
   console.log("status     - 현재 WebSocket 상태를 확인합니다");
   console.log("raw        - 사용자 정의 JSON 메시지를 보냅니다");
   console.log("test       - 기본 연결 테스트를 실행합니다");
+  console.log("exec       - 명령을 실행하고 결과를 받습니다");
+  console.log("templates  - 템플릿 목록을 요청합니다");
+  console.log("generate   - 포트폴리오 생성을 요청합니다");
+  console.log("ai         - AI로 포트폴리오 생성을 요청합니다");
   console.log("help       - 이 도움말을 표시합니다");
   console.log("exit       - 프로그램을 종료합니다");
   console.log("=====================================");
