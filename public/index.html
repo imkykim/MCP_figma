@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Figma MCP Tool</title>
+    <script src="figma-tool.js"></script>
+  </head>
+  <body>
+    <h1>Figma MCP Tool</h1>
+    <p>This page serves the JavaScript tool for Claude to control Figma.</p>
+
+    <script>
+      // Check Figma connection status
+      async function checkStatus() {
+        try {
+          const status = await figma.checkStatus();
+          console.log("Figma status:", status);
+          document.body.innerHTML += `<p>Status: ${status.message}</p>`;
+        } catch (error) {
+          console.error("Error checking status:", error);
+        }
+      }
+
+      checkStatus();
+    </script>
+  </body>
+</html>

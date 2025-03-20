@@ -1,6 +1,7 @@
 /**
  * Claude AI 서비스
  * Claude API를 사용하여 디자인 관련 요청을 처리합니다.
+ * SDK 버전 0.9.0에 맞게 수정됨
  */
 
 const { Anthropic } = require("@anthropic-ai/sdk");
@@ -8,13 +9,27 @@ const dotenv = require("dotenv");
 
 dotenv.config();
 
+// API 키 검증
+const CLAUDE_API_KEY =
+  process.env.CLAUDE_API_KEY || process.env.ANTHROPIC_API_KEY;
+
+if (!CLAUDE_API_KEY) {
+  console.error("ERROR: CLAUDE_API_KEY가 환경 변수에 설정되지 않았습니다.");
+  console.error("'.env' 파일에 CLAUDE_API_KEY를 추가하세요.");
+}
+
 // Claude API 클라이언트 초기화
-const anthropic = new Anthropic({
-  apiKey: process.env.CLAUDE_API_KEY,
-});
+let anthropic;
+try {
+  anthropic = new Anthropic({
+    apiKey: CLAUDE_API_KEY,
+  });
+} catch (error) {
+  console.error("Claude API 클라이언트 초기화 오류:", error);
+}
 
 // 기본 모델 설정
-const DEFAULT_MODEL = "claude-3-sonnet-20240229";
+const DEFAULT_MODEL = "claude-3-5-haiku-20241022";
 const MAX_TOKENS = 2000;
 
 /**
@@ -25,6 +40,17 @@ const MAX_TOKENS = 2000;
  */
 async function processDesignPrompt(prompt, options = {}) {
   try {
+    // API 키 및 클라이언트 검증
+    if (!CLAUDE_API_KEY) {
+      throw new Error(
+        "Claude API 키가 설정되지 않았습니다. .env 파일을 확인하세요."
+      );
+    }
+
+    if (!anthropic) {
+      throw new Error("Claude API 클라이언트가 초기화되지 않았습니다.");
+    }
+
     const model = options.model || DEFAULT_MODEL;
     const maxTokens = options.maxTokens || MAX_TOKENS;
 
@@ -49,21 +75,16 @@ async function processDesignPrompt(prompt, options = {}) {
 명령을 실행하기 위해 필요한 모든 정보를 parameters에 포함하세요.
 자연어 설명이나 추가 텍스트 없이 JSON만 반환하세요.`;
 
-    // Claude API 호출
-    const response = await anthropic.messages.create({
+    // SDK v0.9.0에서는 completions.create 사용 (messages.create 대신)
+    const response = await anthropic.completions.create({
       model,
-      max_tokens: maxTokens,
+      max_tokens_to_sample: maxTokens,
+      prompt: `${Anthropic.HUMAN_PROMPT} ${prompt} ${Anthropic.AI_PROMPT}`,
       system: systemPrompt,
-      messages: [
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
     });
 
     // 응답에서 JSON 추출
-    const content = response.content[0].text;
+    const content = response.completion;
     try {
       // JSON 형식으로 응답이 왔는지 확인
       const jsonMatch = content.match(/\{[\s\S]*\}/);
@@ -91,6 +112,14 @@ async function processDesignPrompt(prompt, options = {}) {
  */
 async function personalizeTemplate(template, userData, options = {}) {
   try {
+    // API 키 및 클라이언트 검증
+    if (!CLAUDE_API_KEY || !anthropic) {
+      console.warn(
+        "Claude API가 설정되지 않았습니다. 기본 템플릿을 반환합니다."
+      );
+      return template;
+    }
+
     const model = options.model || DEFAULT_MODEL;
     const maxTokens = options.maxTokens || MAX_TOKENS;
 
@@ -109,20 +138,15 @@ ${JSON.stringify(userData, null, 2)}
 2. 사용자의 전문 분야에 맞는 색상 조정
 3. 사용자의 선호도에 맞는 스타일 제안`;
 
-    // Claude API 호출
-    const response = await anthropic.messages.create({
+    // SDK v0.9.0에서는 completions.create 사용 (messages.create 대신)
+    const response = await anthropic.completions.create({
       model,
-      max_tokens: maxTokens,
-      messages: [
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
+      max_tokens_to_sample: maxTokens,
+      prompt: `${Anthropic.HUMAN_PROMPT} ${prompt} ${Anthropic.AI_PROMPT}`,
     });
 
     // 응답에서 JSON 추출 시도
-    const content = response.content[0].text;
+    const content = response.completion;
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
@@ -157,6 +181,14 @@ ${JSON.stringify(userData, null, 2)}
  */
 async function generateContent(type, context, options = {}) {
   try {
+    // API 키 및 클라이언트 검증
+    if (!CLAUDE_API_KEY || !anthropic) {
+      console.warn(
+        "Claude API가 설정되지 않았습니다. 기본 텍스트를 반환합니다."
+      );
+      return `[여기에 ${type} 내용을 입력하세요]`;
+    }
+
     const model = options.model || DEFAULT_MODEL;
     const maxTokens = options.maxTokens || MAX_TOKENS;
 
@@ -202,20 +234,15 @@ ${JSON.stringify(context, null, 2)}
 포트폴리오에 적합한 간결한 텍스트를 작성해주세요.`;
     }
 
-    // Claude API 호출
-    const response = await anthropic.messages.create({
+    // SDK v0.9.0에서는 completions.create 사용 (messages.create 대신)
+    const response = await anthropic.completions.create({
       model,
-      max_tokens: maxTokens,
-      messages: [
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
+      max_tokens_to_sample: maxTokens,
+      prompt: `${Anthropic.HUMAN_PROMPT} ${prompt} ${Anthropic.AI_PROMPT}`,
     });
 
     // 텍스트 응답 반환
-    return response.content[0].text.trim();
+    return response.completion.trim();
   } catch (error) {
     console.error("콘텐츠 생성 중 오류:", error);
     // 오류 발생 시 기본 텍스트 반환
@@ -231,6 +258,14 @@ ${JSON.stringify(context, null, 2)}
  */
 async function suggestDesign(userData, options = {}) {
   try {
+    // API 키 및 클라이언트 검증
+    if (!CLAUDE_API_KEY || !anthropic) {
+      console.warn(
+        "Claude API가 설정되지 않았습니다. 기본 디자인 제안을 반환합니다."
+      );
+      return getDefaultDesignSuggestion();
+    }
+
     const model = options.model || DEFAULT_MODEL;
     const maxTokens = options.maxTokens || MAX_TOKENS;
 
@@ -253,20 +288,15 @@ ${JSON.stringify(userData, null, 2)}
   "styleNotes": "디자인 스타일 관련 조언"
 }`;
 
-    // Claude API 호출
-    const response = await anthropic.messages.create({
+    // SDK v0.9.0에서는 completions.create 사용 (messages.create 대신)
+    const response = await anthropic.completions.create({
       model,
-      max_tokens: maxTokens,
-      messages: [
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
+      max_tokens_to_sample: maxTokens,
+      prompt: `${Anthropic.HUMAN_PROMPT} ${prompt} ${Anthropic.AI_PROMPT}`,
     });
 
     // 응답에서 JSON 추출
-    const content = response.content[0].text;
+    const content = response.completion;
     try {
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
@@ -276,40 +306,29 @@ ${JSON.stringify(userData, null, 2)}
       }
     } catch (parseError) {
       console.error("디자인 제안 파싱 실패:", parseError);
-
-      // 기본 디자인 제안 반환
-      return {
-        suggestedTemplate: "minimalist",
-        colorScheme: {
-          primary: { r: 0.1, g: 0.1, b: 0.1, a: 1 },
-          secondary: { r: 0.5, g: 0.5, b: 0.5, a: 1 },
-          accent: { r: 0.9, g: 0.2, b: 0.2, a: 1 },
-        },
-        typography: {
-          heading: "Inter",
-          body: "Inter",
-        },
-        styleNotes: "깔끔하고 전문적인 미니멀 디자인을 추천합니다.",
-      };
+      return getDefaultDesignSuggestion();
     }
   } catch (error) {
     console.error("디자인 제안 중 오류:", error);
-
-    // 오류 발생 시 기본 디자인 제안 반환
-    return {
-      suggestedTemplate: "minimalist",
-      colorScheme: {
-        primary: { r: 0.1, g: 0.1, b: 0.1, a: 1 },
-        secondary: { r: 0.5, g: 0.5, b: 0.5, a: 1 },
-        accent: { r: 0.9, g: 0.2, b: 0.2, a: 1 },
-      },
-      typography: {
-        heading: "Inter",
-        body: "Inter",
-      },
-      styleNotes: "깔끔하고 전문적인 미니멀 디자인을 추천합니다.",
-    };
+    return getDefaultDesignSuggestion();
   }
+}
+
+// 기본 디자인 제안 반환 함수
+function getDefaultDesignSuggestion() {
+  return {
+    suggestedTemplate: "minimalist",
+    colorScheme: {
+      primary: { r: 0.1, g: 0.1, b: 0.1, a: 1 },
+      secondary: { r: 0.5, g: 0.5, b: 0.5, a: 1 },
+      accent: { r: 0.9, g: 0.2, b: 0.2, a: 1 },
+    },
+    typography: {
+      heading: "Inter",
+      body: "Inter",
+    },
+    styleNotes: "깔끔하고 전문적인 미니멀 디자인을 추천합니다.",
+  };
 }
 
 // 서비스 내보내기

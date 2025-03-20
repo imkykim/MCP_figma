@@ -19,10 +19,19 @@ module.exports = {
         test: /\.js$/,
         exclude: /node_modules/,
         use: {
-          loader: "ts-loader",
+          loader: "babel-loader",
           options: {
-            transpileOnly: true,
-          },
+            presets: [
+              ["@babel/preset-env", {
+                targets: {
+                  browsers: ["last 2 versions", "safari >= 7"]
+                }
+              }]
+            ],
+            plugins: [
+              "@babel/plugin-proposal-optional-chaining"
+            ]
+          }
         },
       },
     ],

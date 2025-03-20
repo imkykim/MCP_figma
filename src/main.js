@@ -14,6 +14,7 @@ const mcpCore = require("./mcp/core");
 const figmaService = require("./services/figma-service");
 const claudeService = require("./services/claude-service");
 const templateService = require("./templates/portfolio-templates");
+const claudeAPI = require("./claude-api");
 
 // MCP 서버 포트 설정
 let MCP_PORT = process.env.MCP_PORT || 9000;
@@ -31,6 +32,12 @@ function startServer() {
       );
       console.log(chalk.yellow("Figma 플러그인을 실행하고 서버에 연결하세요."));
       console.log(chalk.yellow(`연결 URL: ws://localhost:${MCP_PORT}`));
+
+      // Start the Claude API server
+      claudeAPI.startAPI();
+      console.log(
+        chalk.green("✅ Claude API 서버가 시작되었습니다 (포트: 3333)")
+      );
     })
     .catch((error) => {
       console.error(chalk.red(`❌ MCP 서버 시작 실패: ${error.message}`));
@@ -62,6 +69,8 @@ function startServer() {
     // 메시지 유형에 따른 처리
     if (message.type === "command") {
       handleCommand(message.command, message.params, message.connectionId);
+    } else if (message.type === "PROCESS_PROMPT") {
+      handlePromptRequest(message, message.connectionId);
     }
   });
 
@@ -133,6 +142,48 @@ async function generatePortfolio(options, connectionId) {
 }
 
 /**
+ * AI 프롬프트 처리 함수
+ * @param {Object} message - 요청 메시지
+ * @param {string} connectionId - 연결 ID
+ */
+async function handlePromptRequest(message, connectionId) {
+  try {
+    console.log(chalk.blue(`🧠 AI 프롬프트 처리 중: "${message.prompt}"`));
+
+    // Claude API를 사용하여 프롬프트 처리
+    const aiResponse = await claudeService.processDesignPrompt(message.prompt, {
+      designerName: message.designerName || "디자이너",
+      model: message.settings?.aiModel || "claude-3-sonnet",
+      designStyle: message.settings?.designStyle || "modern",
+    });
+
+    console.log(chalk.green("✅ AI 응답 생성 완료"));
+
+    // 결과 전송
+    mcpCore.sendMessage(
+      {
+        type: "commandResult",
+        command: "PROCESS_PROMPT",
+        result: aiResponse,
+      },
+      connectionId
+    );
+  } catch (error) {
+    console.error(chalk.red(`❌ AI 프롬프트 처리 실패: ${error.message}`));
+
+    // 오류 메시지 전송
+    mcpCore.sendMessage(
+      {
+        type: "commandResult",
+        command: "PROCESS_PROMPT",
+        error: error.message,
+      },
+      connectionId
+    );
+  }
+}
+
+/**
  * 명령 처리 함수
  * @param {string} command - 명령 이름
  * @param {Object} params - 명령 매개변수
@@ -194,6 +245,10 @@ async function handleCommand(command, params, connectionId) {
         );
         break;
 
+      case "PROCESS_PROMPT":
+        await handlePromptRequest(params, connectionId);
+        break;
+
       default:
         console.log(chalk.yellow(`알 수 없는 명령: ${command}`));
         mcpCore.sendMessage(
@@ -213,6 +268,54 @@ async function handleCommand(command, params, connectionId) {
       {
         type: "error",
         command: command,
+        error: error.message,
+      },
+      connectionId
+    );
+  }
+}
+
+/**
+ * AI 프롬프트 요청 처리
+ * @param {Object} params - 프롬프트 매개변수
+ * @param {string} connectionId - 연결 ID
+ */
+async function handlePromptRequest(params, connectionId) {
+  try {
+    const { prompt, designerName, settings } = params;
+    console.log(chalk.blue(`🧠 AI 프롬프트 처리 중: "${prompt}"`));
+
+    // API 키가 설정되어 있는지 먼저 확인
+    if (!process.env.CLAUDE_API_KEY && !process.env.ANTHROPIC_API_KEY) {
+      throw new Error(
+        "Claude API 키가 설정되지 않았습니다. .env 파일에 CLAUDE_API_KEY를 추가하세요."
+      );
+    }
+
+    // Claude API를 통해 프롬프트 처리
+    const result = await claudeService.processDesignPrompt(prompt, {
+      model: settings?.aiModel || "claude-3-sonnet",
+      userData: {
+        name: designerName || "디자이너",
+        style: settings?.designStyle || "modern",
+      },
+    });
+
+    // 결과 반환
+    mcpCore.sendMessage(
+      {
+        type: "commandResult",
+        command: "PROCESS_PROMPT",
+        result: result,
+      },
+      connectionId
+    );
+  } catch (error) {
+    console.error(chalk.red(`❌ AI 프롬프트 처리 실패: ${error.message}`));
+    mcpCore.sendMessage(
+      {
+        type: "error",
+        command: "PROCESS_PROMPT",
         error: error.message,
       },
       connectionId
@@ -321,8 +424,7 @@ ${chalk.blue("섹션:")} ${Object.keys(template.sections).join(", ")}
         },
       ]);
 
-      // 선택된 템플릿의
-      // 섹션 선택 질문 생성
+      // 선택된 템플릿의 섹션 선택 질문 생성
       const template = templateService.getTemplateById(answers.templateId);
       const sectionChoices = Object.entries(template.sections)
         .filter(([_, config]) => !config.required) // 필수 섹션은 제외
@@ -381,6 +483,71 @@ ${chalk.blue("섹션:")} ${Object.keys(template.sections).join(", ")}
       }
     });
 
+  // AI 프롬프트 명령
+  program
+    .command("prompt")
+    .description("AI 프롬프트로 포트폴리오 생성")
+    .action(async () => {
+      // 서버 상태 확인
+      if (!mcpCore.hasActiveConnections()) {
+        console.log(
+          chalk.yellow("⚠️ 활성화된 Figma 플러그인 연결이 없습니다.")
+        );
+        console.log(
+          chalk.yellow(
+            '먼저 "serve" 명령으로 서버를 시작하고 Figma 플러그인을 연결하세요.'
+          )
+        );
+        return;
+      }
+
+      // 사용자 입력 요청
+      const answers = await inquirer.prompt([
+        {
+          type: "input",
+          name: "designerName",
+          message: "디자이너 이름을 입력하세요:",
+          default: "홍길동",
+        },
+        {
+          type: "input",
+          name: "prompt",
+          message: "포트폴리오 요구사항을 자세히 설명해주세요:",
+          default:
+            "UI/UX 디자이너를 위한 미니멀한 포트폴리오를 만들어주세요. 프로젝트, 스킬, 연락처 섹션이 필요합니다.",
+        },
+      ]);
+
+      // 연결 ID 가져오기
+      const connectionIds = mcpCore.getActiveConnectionIds();
+      const connectionId = connectionIds[0]; // 첫 번째 연결 사용
+
+      // AI 프롬프트 처리
+      try {
+        console.log(chalk.blue("🧠 AI 프롬프트 처리 중..."));
+
+        await handlePromptRequest(
+          {
+            prompt: answers.prompt,
+            designerName: answers.designerName,
+            settings: {
+              aiModel: "claude-3-sonnet",
+              designStyle: "modern",
+            },
+          },
+          connectionId
+        );
+
+        console.log(
+          chalk.green(
+            "✅ AI 프롬프트 요청을 전송했습니다. Figma에서 결과를 확인하세요."
+          )
+        );
+      } catch (error) {
+        console.error(chalk.red(`❌ AI 프롬프트 처리 실패: ${error.message}`));
+      }
+    });
+
   // CLI 명령 파싱
   program.parse();
 }
@@ -394,5 +561,6 @@ if (require.main === module) {
     startServer,
     generatePortfolio,
     handleCommand,
+    handlePromptRequest,
   };
 }

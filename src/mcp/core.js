@@ -245,3 +245,57 @@ module.exports = {
   hasActiveConnections,
   getActiveConnectionIds,
 };
+
+// Add to src/mcp/core.js
+
+// New function to handle direct commands from Claude
+async function handleClaudeCommand(command) {
+  // Parse the command if it's a string
+  if (typeof command === "string") {
+    try {
+      command = JSON.parse(command);
+    } catch (error) {
+      return { error: "Invalid command format: " + error.message };
+    }
+  }
+
+  try {
+    // Generate a command ID
+    const commandId = `claude_${Date.now()}_${Math.random()
+      .toString(36)
+      .substring(2, 9)}`;
+
+    // Prepare the command for MCP
+    const mcpCommand = {
+      type: "command",
+      command: command.command,
+      params: command.params || {},
+      commandId,
+    };
+
+    // Log the command
+    console.log(`Executing Claude command: ${command.command}`);
+    console.log(JSON.stringify(command.params, null, 2));
+
+    // Get a connection ID (use the first active one)
+    const connectionIds = getActiveConnectionIds();
+    if (!connectionIds.length) {
+      return { error: "No active Figma connections" };
+    }
+    const connectionId = connectionIds[0];
+
+    // Send the command
+    const result = await executeCommand(
+      command.command,
+      command.params,
+      connectionId
+    );
+    return { success: true, result };
+  } catch (error) {
+    console.error("Error executing Claude command:", error);
+    return { error: error.message };
+  }
+}
+
+// Export the new function
+module.exports.handleClaudeCommand = handleClaudeCommand;
