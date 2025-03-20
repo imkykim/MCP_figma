@@ -6,6 +6,8 @@
 
 const { Anthropic } = require("@anthropic-ai/sdk");
 const dotenv = require("dotenv");
+const fs = require("fs").promises;
+const path = require("path");
 
 dotenv.config();
 
@@ -32,6 +34,140 @@ try {
 const DEFAULT_MODEL = "claude-3-5-haiku-20241022";
 const MAX_TOKENS = 2000;
 
+// 프롬프트 템플릿 캐시
+const promptTemplates = new Map();
+// 응답 캐시
+const responseCache = new Map();
+
+/**
+ * 프롬프트 템플릿 로드
+ * @param {string} templateName - 템플릿 이름
+ * @returns {Promise<string>} - 템플릿 내용
+ */
+async function loadPromptTemplate(templateName) {
+  // 캐시에 있으면 반환
+  if (promptTemplates.has(templateName)) {
+    return promptTemplates.get(templateName);
+  }
+
+  try {
+    // 템플릿 파일 경로
+    const templatePath = path.join(
+      __dirname,
+      "../templates/prompts",
+      `${templateName}.txt`
+    );
+    
+    // 파일 읽기
+    const template = await fs.readFile(templatePath, "utf-8");
+    
+    // 캐시에 저장
+    promptTemplates.set(templateName, template);
+    
+    return template;
+  } catch (error) {
+    console.warn(`템플릿 ${templateName} 로드 실패:`, error.message);
+    return null;
+  }
+}
+
+/**
+ * 캐시 키 생성
+ * @param {string} type - 요청 유형
+ * @param {Object} params - 요청 매개변수
+ * @returns {string} - 캐시 키
+ */
+function createCacheKey(type, params) {
+  return `${type}:${JSON.stringify(params)}`;
+}
+
+/**
+ * 응답 캐싱
+ * @param {string} key - 캐시 키
+ * @param {any} data - 캐싱할 데이터
+ * @param {number} ttl - 캐시 유효 시간(ms), 기본 1시간
+ */
+function cacheResponse(key, data, ttl = 3600000) {
+  responseCache.set(key, {
+    data,
+    expiry: Date.now() + ttl,
+  });
+}
+
+/**
+ * 캐시에서 응답 가져오기
+ * @param {string} key - 캐시 키
+ * @returns {any|null} - 캐시된 데이터 또는 null
+ */
+function getFromCache(key) {
+  if (!responseCache.has(key)) {
+    return null;
+  }
+
+  const cached = responseCache.get(key);
+  
+  // 만료 확인
+  if (cached.expiry < Date.now()) {
+    responseCache.delete(key);
+    return null;
+  }
+  
+  return cached.data;
+}
+
+/**
+ * Claude API 호출 래퍼 함수 (재시도 로직 포함)
+ * @param {Function} apiCall - API 호출 함수
+ * @param {number} maxRetries - 최대 재시도 횟수
+ * @returns {Promise<any>} - API 응답
+ */
+async function withRetry(apiCall, maxRetries = 3) {
+  let lastError;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await apiCall();
+    } catch (error) {
+      lastError = error;
+      
+      // 재시도 불가능한 오류인 경우 즉시 실패
+      if (
+        error.status === 400 || // 잘못된 요청
+        error.status === 401 || // 인증 오류
+        error.status === 403    // 권한 오류
+      ) {
+        break;
+      }
+      
+      // 재시도 전 지수 백오프 대기
+      const delay = Math.pow(2, attempt) * 1000 + Math.random() * 1000;
+      console.warn(`API 호출 실패, ${attempt + 1}번째 재시도 (${delay}ms 후):`, error.message);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  
+  throw lastError;
+}
+
+/**
+ * JSON 응답 추출
+ * @param {string} content - Claude 응답 텍스트
+ * @returns {Object|null} - 파싱된 JSON 또는 null
+ */
+function extractJSON(content) {
+  try {
+    // JSON 형식으로 응답이 왔는지 확인
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]);
+    }
+    return null;
+  } catch (error) {
+    console.error("JSON 파싱 오류:", error.message);
+    return null;
+  }
+}
+
 /**
  * 디자인 요청을 자연어로 처리하고 구조화된 명령으로 변환
  * @param {string} prompt - 사용자의 자연어 요청
@@ -53,9 +189,23 @@ async function processDesignPrompt(prompt, options = {}) {
 
     const model = options.model || DEFAULT_MODEL;
     const maxTokens = options.maxTokens || MAX_TOKENS;
+    
+    // 캐싱 키 생성
+    const cacheKey = createCacheKey("designPrompt", { prompt, model });
+    
+    // 캐시 확인
+    const cachedResult = getFromCache(cacheKey);
+    if (cachedResult && !options.skipCache) {
+      console.log("캐시에서 디자인 프롬프트 응답 반환");
+      return cachedResult;
+    }
 
-    // 포트폴리오 맥락 제공을 위한 시스템 프롬프트
-    const systemPrompt = `당신은 포트폴리오 디자인 전문가입니다. 사용자의 요청을 분석하여 Figma 플러그인이 이해할 수 있는 구조화된 명령으로 변환해주세요.
+    // 포트폴리오 맥락 제공을 위한 시스템 프롬프트 템플릿 로드
+    let systemPrompt = await loadPromptTemplate("design_prompt_system");
+    
+    // 템플릿이 없으면 기본값 사용
+    if (!systemPrompt) {
+      systemPrompt = `당신은 포트폴리오 디자인 전문가입니다. 사용자의 요청을 분석하여 Figma 플러그인이 이해할 수 있는 구조화된 명령으로 변환해주세요.
 
 응답은 항상 다음 형식의 JSON으로 제공하세요:
 {
@@ -74,29 +224,36 @@ async function processDesignPrompt(prompt, options = {}) {
 
 명령을 실행하기 위해 필요한 모든 정보를 parameters에 포함하세요.
 자연어 설명이나 추가 텍스트 없이 JSON만 반환하세요.`;
+    }
 
-    // SDK v0.9.0에서는 completions.create 사용 (messages.create 대신)
-    const response = await anthropic.completions.create({
-      model,
-      max_tokens_to_sample: maxTokens,
-      prompt: `${Anthropic.HUMAN_PROMPT} ${prompt} ${Anthropic.AI_PROMPT}`,
-      system: systemPrompt,
-    });
+    // API 호출 함수 정의
+    const apiCall = async () => {
+      // SDK v0.9.0에서는 completions.create 사용 (messages.create 대신)
+      const response = await anthropic.completions.create({
+        model,
+        max_tokens_to_sample: maxTokens,
+        prompt: `${Anthropic.HUMAN_PROMPT} ${prompt} ${Anthropic.AI_PROMPT}`,
+        system: systemPrompt,
+      });
+      
+      return response;
+    };
+    
+    // 재시도 로직으로 API 호출
+    const response = await withRetry(apiCall);
 
     // 응답에서 JSON 추출
     const content = response.completion;
-    try {
-      // JSON 형식으로 응답이 왔는지 확인
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
-      } else {
-        throw new Error("Claude의 응답에서 JSON을 추출할 수 없습니다.");
-      }
-    } catch (parseError) {
-      console.error("JSON 파싱 오류:", parseError);
-      throw new Error(`Claude 응답 파싱 실패: ${parseError.message}`);
+    const result = extractJSON(content);
+    
+    if (!result) {
+      throw new Error("Claude의 응답에서 JSON을 추출할 수 없습니다.");
     }
+    
+    // 결과 캐싱 (1시간)
+    cacheResponse(cacheKey, result);
+    
+    return result;
   } catch (error) {
     console.error("Claude API 오류:", error);
     throw new Error(`Claude API 요청 실패: ${error.message}`);
