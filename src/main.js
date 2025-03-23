@@ -5,6 +5,7 @@
 
 // 환경 변수 로드
 require("dotenv").config();
+require("./mcp/claude-figma-integration");
 
 // 필수 모듈 가져오기
 const chalk = require("chalk");
@@ -34,7 +35,7 @@ function startServer() {
       console.log(chalk.yellow(`연결 URL: ws://localhost:${MCP_PORT}`));
 
       // Start the Claude API server
-      claudeAPI.startAPI();
+      require("./claude-figma-api").startAPI();
       console.log(
         chalk.green("✅ Claude API 서버가 시작되었습니다 (포트: 3333)")
       );
